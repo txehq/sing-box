@@ -131,6 +131,7 @@ show_help() {
     echo -e "  -l, --local-install             本地获取安装脚本, 使用当前目录"
     echo -e "  -p, --proxy <addr>              使用代理下载, e.g., -p http://127.0.0.1:2333"
     echo -e "  -v, --core-version <ver>        自定义 $is_core_name 版本, e.g., -v v1.8.13"
+    echo -e "      --with-snell                安装完成后打开 Snell 安装/版本管理菜单 (交互式)"
     echo -e "  -h, --help                      显示此帮助界面\n"
 
     exit 0
@@ -285,6 +286,10 @@ pass_args() {
             ;;
         -h | --help)
             show_help
+            ;;
+        --with-snell)
+            with_snell=1
+            shift
             ;;
         *)
             echo -e "\n${is_err} ($@) 为未知参数...\n"
@@ -453,6 +458,13 @@ main() {
     add reality
     # wait for background tasks (e.g., OpenRC service start)
     wait
+    if [[ $with_snell ]]; then
+        if ! snell_dispatch install; then
+            msg err "sing-box 已安装；Snell 步骤未完成。可运行 sing-box snell install 重试。"
+            rm -rf "$tmpdir"
+            exit 1
+        fi
+    fi
     # remove tmp dir and exit.
     exit_and_del_tmpdir ok
 }

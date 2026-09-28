@@ -26,6 +26,7 @@ show_help() {
             "   qr [name]                                       二维码信息"
             "   url [name]                                      URL 信息"
             "   log                                             查看日志"
+            "   snell [command]                                 Snell 安装/配置/迁移管理 (help 查看命令)"
             # "   logerr                                          查看错误日志\n"
             "更改:"
             # "   dp, dynamicport [name] [start | auto] [end]     更改动态端口"
