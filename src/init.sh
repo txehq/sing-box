@@ -83,7 +83,7 @@ is_conf_dir=$is_core_dir/conf
 is_log_dir=/var/log/$is_core
 is_sh_bin=/usr/local/bin/$is_core
 is_sh_dir=$is_core_dir/sh
-is_sh_repo=$author/$is_core
+is_sh_repo=txehq/sing-box
 is_pkg="wget unzip tar qrencode bash"
 is_config_json=$is_core_dir/config.json
 is_caddy_bin=/usr/local/bin/caddy
@@ -144,5 +144,5 @@ if [[ -f $is_caddy_bin && -d $is_caddy_dir && $is_caddy_service ]]; then
 fi
 
 load core.sh
-[[ ! $args ]] && args=main
-main $args
+[[ ${#args[@]} -eq 0 ]] && args=(main)
+main "${args[@]}"

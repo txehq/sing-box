@@ -1,5 +1,7 @@
 #!/bin/bash
 
+. "${BASH_SOURCE[0]%/*}/network.sh"
+
 protocol_list=(
     TUIC
     Trojan
@@ -198,6 +200,10 @@ is_test() {
 }
 
 is_port_used() {
+    if [[ $is_profile_ip ]]; then
+        profile_port_used "$1"
+        return
+    fi
     if [[ $(type -P netstat) ]]; then
         [[ ! $is_used_port ]] && is_used_port="$(netstat -tunlp | sed -n 's/.*:\([0-9]\+\).*/\1/p' | sort -nu)"
         echo $is_used_port | sed 's/ /\n/g' | grep ^${1}$
@@ -329,11 +335,16 @@ create() {
         else
             is_config_name=$2-${port}.json
         fi
+        [[ $is_profile_ip ]] && is_config_name=${is_config_name%.json}-${is_profile_ip}.json
         is_json_file=$is_conf_dir/$is_config_name
         # get json
         [[ $is_change || ! $json_str ]] && get protocol $2
+        is_add_public_key=
         [[ $net == "reality" ]] && is_add_public_key=",outbounds:[{type:\"direct\"},{tag:\"public_key_$is_public_key\",type:\"direct\"}]"
         is_new_json=$(jq "{inbounds:[{tag:\"$is_config_name\",type:\"$is_protocol\",$is_listen,listen_port:$port,$json_str}]$is_add_public_key}" <<<{})
+        if [[ $is_profile_ip ]]; then
+            is_new_json=$(profile_bind_json <<<"$is_new_json") || return 1
+        fi
         [[ $is_test_json ]] && return # tmp test
         # only show json, dont save to file.
         [[ $is_gen ]] && {
@@ -343,6 +354,10 @@ create() {
             return
         }
         # del old file
+        if [[ -f $is_json_file && $is_config_file != "$is_config_name" ]]; then
+            err "配置已存在，不会覆盖: $is_config_name"
+            return 1
+        fi
         [[ $is_config_file ]] && is_no_del_msg=1 && del $is_config_file
         # save json to file
         cat <<<$is_new_json >$is_json_file
@@ -786,6 +801,28 @@ manage() {
 
 # add a config
 add() {
+    local bind_request= argument
+    local -a positional=()
+    while [[ $# -gt 0 ]]; do
+        argument=$1
+        case $argument in
+        --bind-ip)
+            if [[ $# -lt 2 || ! $2 || $2 == --* ]]; then
+                err "--bind-ip 需要一个公网 IPv4、auto 或 default."
+                return 1
+            fi
+            bind_request=$2
+            shift 2
+            ;;
+        --bind-ip=*)
+            bind_request=${argument#*=}
+            [[ $bind_request ]] || { err "--bind-ip 不能为空."; return 1; }
+            shift
+            ;;
+        *) positional+=("$argument"); shift ;;
+        esac
+    done
+    set -- "${positional[@]}"
     is_lower=${1,,}
     if [[ $is_lower ]]; then
         case $is_lower in
@@ -843,6 +880,7 @@ add() {
         fi
     fi
 
+    unset is_use_tls
     case ${is_new_protocol,,} in
     *-tls)
         is_use_tls=1
@@ -895,6 +933,17 @@ add() {
         ;;
     esac
 
+    local previous_profile_ip=$is_profile_ip
+    profile_select_ip "$bind_request" || return 1
+    if [[ $is_profile_ip ]]; then
+        local core_major core_minor
+        IFS=. read -r core_major core_minor _ <<<"${is_core_ver#v}"
+        if ((core_major < 1 || (core_major == 1 && core_minor < 12))); then
+            err "--bind-ip 需要 sing-box 1.12.0 或更高版本."
+            return 1
+        fi
+    fi
+
     [[ $1 && ! $is_change ]] && {
         msg "\n使用协议: $is_new_protocol"
         # err msg tips
@@ -935,7 +984,9 @@ add() {
             [[ ! $(is_test port ${is_use_port}) ]] && {
                 err "($is_use_port) 不是一个有效的端口. $is_err_tips"
             }
-            [[ $(is_test port_used $is_use_port) && ! $is_gen ]] && {
+            [[ $(is_test port_used $is_use_port) && ! $is_gen &&
+                ! ( $is_change && $is_use_port == "$port" &&
+                    $is_profile_ip == "$previous_profile_ip" ) ]] && {
                 err "无法使用 ($is_use_port) 端口. $is_err_tips"
             }
             port=$is_use_port
@@ -1085,13 +1136,13 @@ get() {
     addr)
         is_addr=$host
         [[ ! $is_addr ]] && {
-            get_ip
-            is_addr=$ip
-            [[ $(grep ":" <<<$ip) ]] && is_addr="[$ip]"
+            [[ ! $is_profile_ip ]] && get_ip
+            is_addr=${is_profile_ip:-$ip}
+            [[ $is_addr == *:* ]] && is_addr="[$is_addr]"
         }
         ;;
     new)
-        [[ ! $host ]] && get_ip
+        [[ ! $host && ! $is_profile_ip ]] && get_ip
         [[ ! $port ]] && get_port && port=$tmp_port
         [[ ! $uuid ]] && get_uuid && uuid=$tmp_uuid
         ;;
@@ -1124,6 +1175,7 @@ get() {
             for v in ${is_up_var_set[@]}; do
                 [[ ${!v} == 'null' ]] && unset $v
             done
+            profile_load_binding
 
             if [[ $is_private_key ]]; then
                 is_reality=1
@@ -1134,6 +1186,7 @@ get() {
             is_socks_pass=$password
 
             # extract anytls ACME domain
+            unset is_anytls_domain
             [[ $is_protocol == 'anytls' ]] && {
                 is_anytls_domain=$(jq -r '(.inbounds[0].tls.certificate_provider.domain[0] // .inbounds[0].tls.acme.domain[0]) // empty' <<<$is_json_str 2>/dev/null)
             }
@@ -1669,7 +1722,7 @@ main() {
     a | add | gen | no-auto-tls)
         [[ $1 == 'gen' ]] && is_gen=1
         [[ $1 == 'no-auto-tls' ]] && is_no_auto_tls=1
-        add ${@:2}
+        add "${@:2}"
         ;;
     bin | pbk | check | completion | format | generate | geoip | geosite | merge | rule-set | run | tools)
         is_run_command=$1
@@ -1755,6 +1808,10 @@ main() {
     ip)
         get_ip
         msg $ip
+        ;;
+    ips)
+        msg "公网 IPv4\t接口 (仅显示已配置地址，需由供应商配置路由)"
+        profile_public_ips || { err "无法检测公网 IPv4，请安装 iproute2."; return 1; }
         ;;
     in | import)
         load import.sh
