@@ -187,6 +187,8 @@ failed_socket_inspection() {
     [[ ! -f $is_conf_dir/Hysteria2-23631-74.219.23.237.json ]]
 }
 
+[[ ${PROFILE_TEST_LIBRARY:-} ]] && return 0
+
 if [[ ${1:-} == --menu ]]; then
     profile_select_ip ''
     printf 'SELECTED=%s@%s\n' "$is_profile_ip" "$is_profile_interface"

@@ -474,6 +474,10 @@ change() {
         info $1
         [[ $is_auto_get_config ]] && msg "\n自动选择: $is_config_file"
     }
+    if ! jq -e '.inbounds | length == 1' "$is_conf_dir/$is_config_file" >/dev/null; then
+        err "此文件含多个入站，不能通过更改/fix 重建。请用 bind-ip 定向迁移，或先拆分配置."
+        return 1
+    fi
     is_old_net=$net
     [[ $is_tcp_http ]] && net=http
     [[ $host ]] && net=$is_protocol-$net-tls
@@ -936,12 +940,7 @@ add() {
     local previous_profile_ip=$is_profile_ip
     profile_select_ip "$bind_request" || return 1
     if [[ $is_profile_ip ]]; then
-        local core_major core_minor
-        IFS=. read -r core_major core_minor _ <<<"${is_core_ver#v}"
-        if ((core_major < 1 || (core_major == 1 && core_minor < 12))); then
-            err "--bind-ip 需要 sing-box 1.12.0 或更高版本."
-            return 1
-        fi
+        profile_require_core || return 1
     fi
 
     [[ $1 && ! $is_change ]] && {
@@ -1724,6 +1723,9 @@ main() {
         [[ $1 == 'no-auto-tls' ]] && is_no_auto_tls=1
         add "${@:2}"
         ;;
+    bind-ip)
+        profile_bind_existing "${@:2}"
+        ;;
     bin | pbk | check | completion | format | generate | geoip | geosite | merge | rule-set | run | tools)
         is_run_command=$1
         if [[ $1 == 'bin' ]]; then
@@ -1761,7 +1763,7 @@ main() {
             msg
             for v in $(ls $is_conf_dir | grep .json$ | sed '/dynamic-port-.*-link/d'); do
                 msg "fix: $v"
-                change $v full
+                change "$v" full || return 1
             done
             _green "\nfix 完成.\n"
             ;;

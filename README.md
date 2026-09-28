@@ -24,6 +24,34 @@ sing-box url Hysteria2-23626-74.219.23.237.json
 sing-box passwd Hysteria2-23626-74.219.23.237.json auto
 ```
 
+### 原地迁移现有配置（v1.20）
+
+已有客户端需要继续使用原端口、密码/UUID、证书和 REALITY 密钥时，使用 `bind-ip`，
+无需重新创建或重新导入客户端配置。例如，将原来的两个配置固定到 `.240`：
+
+```bash
+sing-box bind-ip Hysteria2-23626.json 74.219.23.240
+sing-box bind-ip VLESS-REALITY-4200.json 74.219.23.240
+
+# 新配置可独立选择 .237，auto 自动选择空闲端口并生成新凭据
+sing-box add hy2 auto auto --bind-ip 74.219.23.237
+sing-box add reality auto auto --bind-ip 74.219.23.237
+```
+
+`bind-ip` 保留配置文件名、入站 tag、端口、凭据和 TLS/REALITY 参数，只设置该入站的
+监听 IP 和配套出口/路由。迁移前备份配置、校验完整候选配置，再重启服务；重启失败时
+恢复原文件并尝试恢复服务。活动连接可能短暂重连。
+
+若以前手工在一个文件内添加了多个入站，默认仅迁移第一个，其他入站保持原样。
+也可以用第三个参数指定某个入站 tag：
+
+```bash
+sing-box bind-ip Hysteria2-23626.json 74.219.23.237 Hysteria2-23626.json-ip237
+```
+
+重复迁移同一入站不会叠加重复路由。`change` / `fix` 拒绝重建多入站文件，避免丢失
+手工添加的其他入站；`bind-ip` 可继续定向迁移这类文件。
+
 - 交互式添加会显示 IP / 接口选择菜单，`0` 或回车保留原来的默认行为。
   无终端的命令、安装流程和 `gen` 不会自动询问；需要绑定时传入 `--bind-ip`。
 - `--bind-ip auto` 仅在恰好检测到一个公网 IPv4 时选择它；多个候选时必须明确指定。
@@ -46,6 +74,8 @@ sing-box passwd Hysteria2-23626-74.219.23.237.json auto
 验证：连接每个客户端配置后，通过代理访问 IP 查询服务，检查是否显示所选 IP。
 本地测试：`bash tests/profile-binding.sh`；设置 `SING_BOX=/path/to/sing-box` 可额外
 校验合并后的真实配置。测试使用模拟网卡和临时配置，不更改本机网络或启动代理服务。
+迁移回归测试：`bash tests/profile-migration.sh`，覆盖保留原客户端设置、手工多入站、
+重复执行、配置校验失败和服务重启失败回滚。
 
 最好用的 sing-box 一键安装脚本 & 管理脚本
 

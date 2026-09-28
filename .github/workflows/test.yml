@@ -25,4 +25,5 @@ jobs:
           SING_BOX: /tmp/sing-box-1.14.0-linux-amd64/sing-box
         run: |
           bash tests/profile-binding.sh
+          bash tests/profile-migration.sh
           python3 tests/profile-menu.py
