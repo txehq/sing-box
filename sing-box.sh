@@ -1,6 +1,6 @@
 #!/bin/bash
 
-args=$@
-is_sh_ver=v1.18
+args=("$@")
+is_sh_ver=v1.19
 
 . /etc/sing-box/sh/src/init.sh
