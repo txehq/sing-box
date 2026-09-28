@@ -24,6 +24,8 @@ jobs:
           for file in *.sh src/*.sh tests/*.sh; do bash -n "$file"; done
           bash tests/profile-binding.sh
           bash tests/profile-migration.sh
+          bash tests/snell-bridge.sh
+          bash tests/snell-download.sh
       # - name: test
       #   if: env.is_sh_ver == env.old 
       #   run: |

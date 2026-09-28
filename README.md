@@ -1,5 +1,56 @@
 # 介绍
 
+## sing-box + Snell 统一管理（v1.21）
+
+本分支的同一个安装脚本与 `sing-box` 管理命令现在包含 Snell v5/v6 管理入口。
+Snell 继续使用独立二进制、systemd 服务和 `/etc/snell` 配置；它不是写入 sing-box
+JSON 的入站。升级管理脚本即可识别已经安装的 Snell，原端口、PSK 和版本保持不变。
+
+```bash
+# 已安装本分支的机器：升级管理脚本即可，无需重装服务
+sing-box update sh v1.21
+
+# 查看现有 Snell 配置（不显示 PSK），或打开共同管理菜单
+sing-box snell list
+sing-box snell
+
+# 新建独立 Snell 配置，选择对应版本、公网 IP，自动生成端口和 PSK
+sing-box add snell-v5 auto --bind-ip 74.219.23.237
+sing-box add snell-v6 auto --bind-ip 74.219.23.237
+
+# 也可使用 Snell 原生命令形式
+sing-box snell add --version v6 --bind-ip 74.219.23.237
+sing-box snell bind-ip main 74.219.23.240
+sing-box snell profile 55261
+
+# 首次安装 Snell / 增加服务器版本通道
+sing-box snell install
+```
+
+主菜单新增 **Snell 管理**，原有 **添加配置** 菜单也列出 **Snell-v5 / Snell-v6**。
+`sing-box snell install` 打开原生 Snell 安装/版本管理菜单：选项 1 安装主服务，
+选项 8 管理并行版本通道。新建 v5/v6 配置要求相应服务器通道已经安装；每次仅创建
+所选的一个版本。无 `--bind-ip` 时交互式选择地址，非交互调用则按 Snell 的规则处理。
+
+全新安装 sing-box 时，可以加 `--with-snell`，在 sing-box 安装完成后自动打开
+Snell 安装/版本菜单。此选项是交互式安装入口，不会静默覆盖已有 Snell 配置。
+安装 Snell 或创建/迁移其配置时会补齐缺少的 Ubuntu/Debian 依赖；列表和帮助无需
+下载 Snell 脚本或安装依赖。
+
+集成支持原生 **Ubuntu/Debian + systemd、Snell v5/v6**。Snell 配置仍以端口标识，
+不同配置使用不同端口；主配置用 `main` 标识。客户端导出命令含 PSK，请仅在自己的
+终端使用。Snell 的 IP 绑定、回滚及限制沿用 [txehq/snell.sh](https://github.com/txehq/snell.sh)
+的实现。通过 `sing-box` 的协议转换或 `gen` 无法转换/生成 Snell 配置，请使用专属命令。
+
+桥接的两个入口脚本固定到 Snell 提交
+`8031963f67d7532b661990017b34250ccc5b03a6`，首次使用时通过 HTTPS 下载、校验 SHA-256
+及 Bash 语法后缓存；每次执行前重新核对缓存。原生安装器按该项目自身的流程下载
+服务器二进制及附属管理工具。原生菜单内的脚本自更新不会改写桥接缓存；更新集成
+版本请使用 `sing-box update sh`。卸载 sing-box 不会删除 Snell 的服务、配置或已部署的
+IP 绑定启动助手。
+
+集成测试：`bash tests/snell-bridge.sh`；实际下载校验：`bash tests/snell-download.sh`。
+
 ## 按公网 IPv4 创建配置（txehq 分支）
 
 创建配置时，可以选择本机已经配置的公网 IPv4 和对应接口。同一接口上的多个

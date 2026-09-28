@@ -1,6 +1,7 @@
 #!/bin/bash
 
 . "${BASH_SOURCE[0]%/*}/network.sh"
+. "${BASH_SOURCE[0]%/*}/snell.sh"
 
 protocol_list=(
     TUIC
@@ -25,6 +26,8 @@ protocol_list=(
     AnyTLS
     # Direct
     Socks
+    Snell-v5
+    Snell-v6
 )
 ss_method_list=(
     aes-128-gcm
@@ -36,16 +39,17 @@ ss_method_list=(
     2022-blake3-chacha20-poly1305
 )
 mainmenu=(
-    "添加配置"
-    "更改配置"
-    "查看配置"
-    "删除配置"
-    "运行管理"
-    "更新"
-    "卸载"
+    "添加配置 (sing-box / Snell)"
+    "更改 sing-box 配置"
+    "查看 sing-box 配置"
+    "删除 sing-box 配置"
+    "sing-box 运行管理"
+    "更新 sing-box"
+    "卸载 sing-box"
     "帮助"
     "其他"
     "关于"
+    "Snell 管理 (v5 / v6)"
 )
 info_list=(
     "协议 (protocol)"
@@ -875,6 +879,23 @@ add() {
 
     # no prefer protocol
     [[ ! $is_new_protocol ]] && ask set_protocol
+
+    case ${is_new_protocol,,} in
+    snell-v5|snell-v6)
+        if [[ $is_gen || $is_no_auto_tls || $is_change ]]; then
+            err "Snell 是独立服务。请使用 sing-box snell 管理已有配置；不支持 gen 或 sing-box 协议转换。"
+            return 1
+        fi
+        if [[ $# -gt 3 || ( $3 && $3 != auto ) ]]; then
+            err "用法: sing-box add ${is_new_protocol,,} [port|auto] [auto] [--bind-ip IP]。新配置自动生成 PSK。"
+            return 1
+        fi
+        local -a snell_args=(add --version "${is_new_protocol##*-}" --port "${2:-auto}")
+        [[ ! $bind_request ]] || snell_args+=(--bind-ip "$bind_request")
+        snell_dispatch "${snell_args[@]}"
+        return $?
+        ;;
+    esac
 
     if [[ ${is_new_protocol,,} == 'anytls' ]]; then
         is_core_major=$(echo "$is_core_ver" | cut -d. -f1)
@@ -1712,12 +1733,18 @@ is_main_menu() {
         load help.sh
         about
         ;;
+    11)
+        snell_dispatch
+        ;;
     esac
 }
 
 # check prefer args, if not exist prefer args and show main menu
 main() {
     case $1 in
+    snell)
+        snell_dispatch "${@:2}"
+        ;;
     a | add | gen | no-auto-tls)
         [[ $1 == 'gen' ]] && is_gen=1
         [[ $1 == 'no-auto-tls' ]] && is_no_auto_tls=1
