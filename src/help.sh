@@ -19,6 +19,7 @@ show_help() {
             "一般:"
             "   a, add [protocol] [args... | auto]              添加配置"
             "       --bind-ip IP|auto|default                   选择监听/出口 IPv4 (auto 仅限一个候选)"
+            "   bind-ip name.json IP [inbound-tag]             原地迁移已有配置，保留端口及凭据"
             "   c, change [name] [option] [args... | auto]      更改配置"
             "   d, del [name]                                   删除配置**"
             "   i, info [name]                                  查看配置"

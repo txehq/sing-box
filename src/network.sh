@@ -113,18 +113,111 @@ profile_select_ip() {
 # Keep binding and routing in the profile itself: change/fix/delete need no
 # separate global registry, and resetting config.json cannot erase the route.
 profile_bind_json() {
-    jq --arg ip "$is_profile_ip" --arg iface "$is_profile_interface" '
-      .inbounds[0].listen = $ip
-      | .inbounds[0].tag as $inbound
+    jq --arg ip "$is_profile_ip" --arg iface "$is_profile_interface" --arg selected "${1:-}" '
+      (if $selected == "" then .inbounds[0].tag else $selected end) as $inbound
+      | if ([.inbounds[] | select(.tag == $inbound)] | length) != 1
+        then error("Expected exactly one matching inbound") else . end
       | ("profile-direct-" + $inbound) as $outbound
-      | .outbounds += [{type: "direct", tag: $outbound,
+      | .inbounds |= map(if .tag == $inbound then .listen = $ip else . end)
+      | .outbounds = ([.outbounds[]? | select(.tag != $outbound)] +
+          [{type: "direct", tag: $outbound,
           bind_interface: $iface, inet4_bind_address: $ip}]
-      | .route.rules += [
+        )
+      | .route.rules = ([
           {inbound: [$inbound], ip_version: 6, action: "reject"},
           {inbound: [$inbound], action: "resolve", strategy: "ipv4_only"},
           {inbound: [$inbound], action: "route", outbound: $outbound}]
+        + [.route.rules[]? | select(
+            (.inbound == [$inbound] and
+              ((.outbound == $outbound and .action == "route") or
+               (.ip_version == 6 and .action == "reject") or
+               (.strategy == "ipv4_only" and .action == "resolve"))) | not)])
     '
 }
+
+profile_require_core() {
+    local core_major core_minor
+    IFS=. read -r core_major core_minor _ <<<"${is_core_ver#v}"
+    if ((core_major < 1 || (core_major == 1 && core_minor < 12))); then
+        err "绑定 IP 需要 sing-box 1.12.0 或更高版本."
+        return 1
+    fi
+    return 0
+}
+
+profile_restart_service() {
+    if [[ $is_systemd ]]; then
+        systemctl restart "$is_core" || return 1
+        sleep 2
+        systemctl is-active --quiet "$is_core"
+    elif [[ $is_openrc ]]; then
+        rc-service "$is_core" restart || return 1
+        sleep 2
+        rc-service "$is_core" status
+    else
+        return 1
+    fi
+}
+
+# Migrate in place rather than regenerating a profile: clients retain their
+# port, credentials, TLS/REALITY settings and tag. Other inbounds stay intact.
+# All temporary/backup files are outside the live -C configuration directory.
+profile_bind_existing() (
+    set -e
+    umask 077
+    local file=${1:-} address=${2:-} selected=${3:-} backup stage port
+    if [[ $# -lt 2 || $# -gt 3 || $file == */* || $file != *.json ||
+          ! -f $is_conf_dir/$file || ! $address || $address == default ]]; then
+        err "用法: $is_core bind-ip 完整配置文件名.json 公网IPv4 [入站tag]"
+        exit 1
+    fi
+    profile_require_core || exit 1
+    profile_select_ip "$address" || exit 1
+    if [[ ! $is_systemd && ! $is_openrc ]]; then
+        err "无法检测服务管理器，未更改配置."
+        exit 1
+    fi
+    [[ $selected ]] || selected=$(jq -r '.inbounds[0].tag // empty' "$is_conf_dir/$file")
+    # Loopback reverse-proxy backends and domain-managed AnyTLS require a
+    # different migration; changing only their backend would break the service.
+    if ! jq -e --arg tag "$selected" '
+      [.inbounds[] | select(.tag == $tag)] as $in |
+      ($in | length) == 1 and
+      ($in[0].listen != "127.0.0.1" and $in[0].listen != "::1") and
+      ($in[0].type != "anytls" or
+       ($in[0].tls.certificate_provider == null and $in[0].tls.acme == null))
+    ' "$is_conf_dir/$file" >/dev/null; then
+        err "找不到唯一入站，或该入站属于域名/反向代理管理的入口."
+        exit 1
+    fi
+    port=$(jq -r --arg tag "$selected" '.inbounds[] | select(.tag == $tag) | .listen_port' "$is_conf_dir/$file")
+    if jq -se --arg tag "$selected" --arg ip "$is_profile_ip" --argjson port "$port" '
+      any(.[] | .inbounds[]?; .tag != $tag and .listen_port == $port and
+        (.listen == $ip or .listen == "::" or .listen == "0.0.0.0" or .listen == ""))
+    ' "$is_conf_dir"/*.json >/dev/null; then
+        err "其他已保存入站占用此 IP/端口，未更改配置."
+        exit 1
+    fi
+    backup=$(mktemp -d "$is_core_dir/backup-bind-ip.XXXXXX")
+    cp -a "$is_conf_dir" "$backup/conf"
+    cp -a "$is_config_json" "$backup/config.json"
+    stage=$(mktemp -d "$is_core_dir/.bind-ip.XXXXXX")
+    trap 'rm -rf "$stage"' EXIT
+    cp -a "$backup/conf" "$stage/conf"
+    profile_bind_json "$selected" < "$backup/conf/$file" > "$stage/conf/$file" || exit 1
+    printf '配置备份: %s\n' "$backup"
+    "$is_core_bin" check -c "$backup/config.json" -C "$stage/conf" || exit 1
+    # Rename on the same filesystem keeps readers from seeing a partial JSON.
+    mv "$stage/conf/$file" "$is_conf_dir/$file" || exit 1
+    if ! profile_restart_service; then
+        cp -a "$backup/conf/$file" "$stage/restore.json"
+        mv "$stage/restore.json" "$is_conf_dir/$file"
+        profile_restart_service || warn "原配置已恢复，但服务未恢复运行，请检查日志."
+        err "服务重启失败，已还原原配置: $backup"
+        exit 1
+    fi
+    printf '%s (%s): 监听/出口 %s，端口、凭据和 TLS 设置保持不变.\n' "$file" "$selected" "$is_profile_ip"
+)
 
 profile_load_binding() {
     unset is_profile_ip is_profile_interface
