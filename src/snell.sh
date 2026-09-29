@@ -2,14 +2,14 @@
 # Snell is an independent server. Run its manager in a child process so neither
 # its shell globals nor its profile lifecycle can overwrite sing-box settings.
 # shellcheck disable=SC2154
-SNELL_BRIDGE_REV=8031963f67d7532b661990017b34250ccc5b03a6
+SNELL_BRIDGE_REV=a20ec57e698a7f5a7e407f29c321f2c82f57c7e6
 SNELL_BRIDGE_CONF=/etc/snell
 
 snell_bridge_error() { printf 'Snell: %s\n' "$*" >&2; return 1; }
 snell_bridge_hash() {
     case $1 in
-        snell.sh) printf '%s\n' 8d602232b0560852f7dba7eb1a5fc6e37b14d793fb67abd3fd7067728e471e91;;
-        ip-binding.sh) printf '%s\n' 91b9f6c55453dfd3b01b7501d1156af90ebe786dbdd704f4dc27122b81b9ce21;;
+        snell.sh) printf '%s\n' d1f9e5d2bb989319f88745f63b8162be835151492179382496341034c90493f7;;
+        ip-binding.sh) printf '%s\n' d9df52d26d2b98ed57f4aaeb208f1763b82a761ed1dda4237c6ede1ae3101745;;
         *) return 1;;
     esac
 }

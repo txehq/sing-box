@@ -8,7 +8,7 @@ JSON 的入站。升级管理脚本即可识别已经安装的 Snell，原端口
 
 ```bash
 # 已安装本分支的机器：升级管理脚本即可，无需重装服务
-sing-box update sh v1.21
+sing-box update sh v1.22
 
 # 查看现有 Snell 配置（不显示 PSK），或打开共同管理菜单
 sing-box snell list
@@ -27,6 +27,9 @@ sing-box snell profile 55261
 sing-box snell install
 ```
 
+v1.22 修复旧 Snell 配置缺少 IP 绑定标记时无法导出的问题。导出不会修改配置或绑定
+出口；通配监听会列出可用的公网 IPv4 入口地址。需要固定出口时另行使用 `bind-ip`。
+
 主菜单新增 **Snell 管理**，原有 **添加配置** 菜单也列出 **Snell-v5 / Snell-v6**。
 `sing-box snell install` 打开原生 Snell 安装/版本管理菜单：选项 1 安装主服务，
 选项 8 管理并行版本通道。新建 v5/v6 配置要求相应服务器通道已经安装；每次仅创建
@@ -43,7 +46,7 @@ Snell 安装/版本菜单。此选项是交互式安装入口，不会静默覆�
 的实现。通过 `sing-box` 的协议转换或 `gen` 无法转换/生成 Snell 配置，请使用专属命令。
 
 桥接的两个入口脚本固定到 Snell 提交
-`8031963f67d7532b661990017b34250ccc5b03a6`，首次使用时通过 HTTPS 下载、校验 SHA-256
+`a20ec57e698a7f5a7e407f29c321f2c82f57c7e6`，首次使用时通过 HTTPS 下载、校验 SHA-256
 及 Bash 语法后缓存；每次执行前重新核对缓存。原生安装器按该项目自身的流程下载
 服务器二进制及附属管理工具。原生菜单内的脚本自更新不会改写桥接缓存；更新集成
 版本请使用 `sing-box update sh`。卸载 sing-box 不会删除 Snell 的服务、配置或已部署的
